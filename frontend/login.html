@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Login · Find My Gang</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="css/ios.css">
+  
+</head>
+
+<body>
+
+<div class="container">
+  <h2 id="title" class="title">Sign in</h2>
+
+  <!-- LOGIN -->
+  <div id="loginForm">
+    <input type="email" id="loginEmail" placeholder="Email" />
+    <input type="password" id="loginPassword" placeholder="Password" />
+    <button onclick="signIn()">Sign in</button>
+    <div class="toggle" onclick="forgotPassword()">Forgot your password?</div>
+  </div>
+
+  <!-- REGISTER -->
+  <div id="registerForm" class="hidden">
+    <input type="email" id="regEmail" placeholder="Email" />
+    <input type="text" id="regName" placeholder="Full name (visible)" />
+    <input type="tel" id="regPhone" placeholder="Phone (optional)" />
+    <input type="password" id="regPassword" placeholder="Password" />
+    <button onclick="createAccount()">Create account</button>
+  </div>
+
+  <div id="message" class="error"></div>
+
+  <div class="toggle" onclick="toggleMode()">
+    <span id="toggleText">Create account</span>
+  </div>
+</div>
+
+<!-- Supabase -->
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+  const supabaseClient = supabase.createClient(
+    'https://wbdlvxisyktesdylhlsg.supabase.co',
+    'sb_publishable_siYPKtcJxDZRE-vRJ79gxA_e9vrmfUP'
+  );
+
+  let mode = 'login';
+
+  function toggleMode() {
+    document.getElementById('message').innerText = '';
+
+    if (mode === 'login') {
+      mode = 'register';
+      loginForm.classList.add('hidden');
+      registerForm.classList.remove('hidden');
+      title.innerText = 'Create account';
+      toggleText.innerText = 'Already have an account? Sign in';
+    } else {
+      mode = 'login';
+      registerForm.classList.add('hidden');
+      loginForm.classList.remove('hidden');
+      title.innerText = 'Sign in';
+      toggleText.innerText = 'Create account';
+    }
+  }
+
+  async function signIn() {
+    const email = loginEmail.value;
+    const password = loginPassword.value;
+    const msg = document.getElementById('message');
+    msg.innerText = '';
+
+    const { error } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      msg.innerText = error.message;
+    } else {
+      window.location.href = 'index.html';
+    }
+  }
+
+  async function createAccount() {
+    const email = regEmail.value;
+    const password = regPassword.value;
+    const name = regName.value;
+    const phone = regPhone.value;
+    const msg = document.getElementById('message');
+    msg.innerText = '';
+
+    if (!email || !password || !name) {
+      msg.innerText = 'Please fill all required fields';
+      return;
+    }
+
+    const { data, error } = await supabaseClient.auth.signUp({
+      email,
+      password
+    });
+
+    if (error) {
+      msg.innerText = error.message;
+      return;
+    }
+
+    await supabaseClient.from('profiles').insert({
+      id: data.user.id,
+      name,
+      phone
+    });
+
+    window.location.href = 'index.html';
+  }
+
+  async function forgotPassword() {
+    const email = loginEmail.value;
+    const msg = document.getElementById('message');
+    msg.innerText = '';
+
+    if (!email) {
+      msg.innerText = 'Enter your email first';
+      return;
+    }
+
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+
+    msg.innerText = error
+      ? error.message
+      : 'Password reset email sent';
+  }
+</script>
+
+</body>
+</html>

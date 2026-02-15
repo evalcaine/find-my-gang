@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Reset password · Find My Gang</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="css/ios.css">
+
+  
+</head>
+<body>
+
+  <nav class="navbar">
+  <div class="nav-container">
+    <div class="logo">Find My Gang</div>
+    <div class="nav-links">
+      <a href="index.html">Who's around?</a>
+      <a href="register.html">My tours</a>
+      <button onclick="logout()">Logout</button>
+    </div>
+  </div>
+</nav>
+
+<div class="card">
+  <h2>Set new password</h2>
+
+  <input type="password" id="newPassword" placeholder="New password">
+  <button onclick="updatePassword()">Update password</button>
+
+  <div id="msg"></div>
+</div>
+
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+  const supabaseClient = supabase.createClient(
+    'https://wbdlvxisyktesdylhlsg.supabase.co',
+    'sb_publishable_siYPKtcJxDZRE-vRJ79gxA_e9vrmfUP'
+  );
+
+  let ready = false;
+
+  // 🔑 Esperar a que Supabase procese el token del email
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY' && session) {
+      ready = true;
+      console.log('Recovery session ready');
+    }
+  });
+
+  async function updatePassword() {
+    const password = document.getElementById('newPassword').value;
+    const msg = document.getElementById('msg');
+
+    if (!password) {
+      msg.innerText = 'Password required';
+      return;
+    }
+
+    if (!ready) {
+      msg.innerText = 'Please wait a second and try again';
+      return;
+    }
+
+    const { error } = await supabaseClient.auth.updateUser({
+      password
+    });
+
+    if (error) {
+      msg.innerText = error.message;
+    } else {
+      msg.innerText = 'Password updated. Redirecting...';
+      setTimeout(() => {
+        window.location.href = 'index.html';
+      }, 1500);
+    }
+  }
+</script>
+
+
+</body>
+</html>

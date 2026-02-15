@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Find My Gang</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="css/ios.css">
+</head>
+
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="nav-container">
+    <div class="logo">Find My Gang</div>
+    <div class="nav-links">
+      <a href="index.html">Who's around?</a>
+      <a href="register.html">My tours</a>
+      <button onclick="logout()">Logout</button>
+    </div>
+  </div>
+</nav>
+
+<header>
+  <h1>Find My Gang</h1>
+  <p>We're in it together</p>
+</header>
+
+<div class="container">
+  <div class="search-box">
+    <input type="date" id="date" />
+    <button onclick="loadMatches()">Search</button>
+    <button onclick="setToday()" class="today-btn">TODAY</button>
+  </div>
+
+  <div class="results" id="results"></div>
+  <div class="empty" id="empty"></div>
+</div>
+
+<!-- PROFILE MODAL -->
+<div id="profileOverlay" class="overlay hidden" onclick="closeProfile(event)">
+  <div class="modal">
+    <button class="close-btn" onclick="closeProfile()">✕</button>
+    <h2 id="profileName"></h2>
+    <p id="profilePhone" class="phone"></p>
+    <p class="note">You matched on this date and city 🎉</p>
+  </div>
+</div>
+
+<!-- SUPABASE -->
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+<script>
+/* ===============================
+   CONFIG
+================================ */
+
+const supabaseClient = supabase.createClient(
+  'https://wbdlvxisyktesdylhlsg.supabase.co',
+  'sb_publishable_siYPKtcJxDZRE-vRJ79gxA_e9vrmfUP'
+);
+
+let currentUserEmail = null;
+
+/* ===============================
+   HELPERS
+================================ */
+
+function formatDate(dateString) {
+  const [y, m, d] = dateString.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function setToday() {
+  const t = new Date();
+  const yyyy = t.getFullYear();
+  const mm = String(t.getMonth() + 1).padStart(2, '0');
+  const dd = String(t.getDate()).padStart(2, '0');
+  document.getElementById('date').value = `${yyyy}-${mm}-${dd}`;
+  loadMatches();
+}
+
+/* ===============================
+   LOAD MATCHES
+================================ */
+
+async function loadMatches() {
+
+  const dateInput = document.getElementById('date');
+  const results = document.getElementById('results');
+  const empty = document.getElementById('empty');
+
+  results.innerHTML = '';
+  empty.innerHTML = '';
+
+  if (!currentUserEmail) {
+    empty.innerText = 'User not loaded';
+    return;
+  }
+
+  if (!dateInput.value) {
+    empty.innerText = 'Please select a date';
+    return;
+  }
+
+  const date = dateInput.value.split('T')[0];
+
+  const url =
+    `/matches/grouped` +
+    `?email=${encodeURIComponent(currentUserEmail)}` +
+    `&date=${encodeURIComponent(date)}`;
+
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (err) {
+    console.error('Network error:', err);
+    empty.innerText = 'Cannot reach server';
+    return;
+  }
+
+  if (!response.ok) {
+    empty.innerText = 'Error loading matches';
+    return;
+  }
+
+  const data = await response.json();
+
+  if (!Array.isArray(data) || data.length === 0) {
+    empty.innerText = 'No matches found';
+    return;
+  }
+
+  data.forEach(item => {
+
+    if (!item.people || item.people.length === 0) return;
+
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    card.innerHTML = `
+      <div class="city">${item.city}</div>
+      <div class="date">${formatDate(item.date)}</div>
+      <div class="people">
+        ${item.people.map(p => `
+          <span class="person"
+            onclick="openProfile(
+              '${item.city}',
+              '${item.date}',
+              '${p.name.replace(/'/g, "\\'")}'
+            )">
+            ${p.name}
+          </span>
+        `).join('')}
+      </div>
+    `;
+
+    results.appendChild(card);
+  });
+}
+
+/* ===============================
+   OPEN PROFILE
+================================ */
+
+async function openProfile(city, date, name) {
+
+  const url =
+    `/profile` +
+    `?email=${encodeURIComponent(currentUserEmail)}` +
+    `&name=${encodeURIComponent(name)}` +
+    `&date=${date}` +
+    `&city=${encodeURIComponent(city)}`;
+
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (err) {
+    alert('Network error');
+    return;
+  }
+
+  if (!response.ok) {
+    alert('You can only view profiles if there is a real match');
+    return;
+  }
+
+  const profile = await response.json();
+
+  document.getElementById('profileName').innerText = profile.name || '';
+  document.getElementById('profilePhone').innerText =
+    profile.phone ? `📞 ${profile.phone}` : '📞 Phone not shared';
+
+  document.getElementById('profileOverlay').classList.remove('hidden');
+}
+
+function closeProfile(event) {
+  if (!event || event.target.id === 'profileOverlay') {
+    document.getElementById('profileOverlay').classList.add('hidden');
+  }
+}
+
+/* ===============================
+   LOGOUT
+================================ */
+
+async function logout() {
+  await supabaseClient.auth.signOut();
+  window.location.href = 'login.html';
+}
+
+/* ===============================
+   INIT
+================================ */
+
+window.addEventListener('DOMContentLoaded', async () => {
+
+  const { data: { session } } = await supabaseClient.auth.getSession();
+
+  if (!session) {
+    window.location.href = 'login.html';
+    return;
+  }
+
+  currentUserEmail = session.user.email;
+  setToday();
+});
+</script>
+
+</body>
+</html>
