@@ -176,7 +176,7 @@ api.get('/matches/grouped', async (req, res) => {
 app.use('/api', api);
 
 /* ------------------ FRONTEND FALLBACK ------------------ */
-app.get('*', (_req, res) => {
+app.get('/*', (_req, res) => {
   res.sendFile(path.join(__dirname, 'frontend', 'login.html'));
 });
 
