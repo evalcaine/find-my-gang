@@ -1,75 +1,142 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Login · Find My Gang</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<link rel="stylesheet" href="css/ios.css">
-  
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+
+    .container {
+      max-width: 420px;
+      margin: 100px auto;
+      padding: 0 20px;
+    }
+
+    .card {
+      background: white;
+      padding: 32px;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      margin-top: 0;
+      text-align: center;
+      color: #4f46e5;
+    }
+
+    p.subtitle {
+      text-align: center;
+      color: #6b7280;
+      font-size: 14px;
+      margin-top: -10px;
+      margin-bottom: 25px;
+    }
+
+    input,
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 12px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    button {
+      background: #4f46e5;
+      color: white;
+      border: none;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    .link {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 14px;
+      color: #4f46e5;
+      cursor: pointer;
+    }
+
+    .message {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .message.error {
+      color: #dc2626;
+    }
+
+    .message.success {
+      color: #16a34a;
+    }
+  </style>
 </head>
 
 <body>
 
 <div class="container">
-  <h2 id="title" class="title">Sign in</h2>
+  <div class="card">
+    <h1>Find My Gang</h1>
+    <p class="subtitle">Sign in to continue</p>
 
-  <!-- LOGIN -->
-  <div id="loginForm">
-    <input type="email" id="loginEmail" placeholder="Email" />
-    <input type="password" id="loginPassword" placeholder="Password" />
-    <button onclick="signIn()">Sign in</button>
-    <div class="toggle" onclick="forgotPassword()">Forgot your password?</div>
-  </div>
+    <input type="email" id="email" placeholder="Email" />
+    <input type="password" id="password" placeholder="Password" />
 
-  <!-- REGISTER -->
-  <div id="registerForm" class="hidden">
-    <input type="email" id="regEmail" placeholder="Email" />
-    <input type="text" id="regName" placeholder="Full name (visible)" />
-    <input type="tel" id="regPhone" placeholder="Phone (optional)" />
-    <input type="password" id="regPassword" placeholder="Password" />
-    <button onclick="createAccount()">Create account</button>
-  </div>
+    <button id="loginBtn" onclick="signIn()">Sign in</button>
 
-  <div id="message" class="error"></div>
+    <div class="link" onclick="resetPassword()">Forgot your password?</div>
 
-  <div class="toggle" onclick="toggleMode()">
-    <span id="toggleText">Create account</span>
+    <div id="message" class="message"></div>
   </div>
 </div>
 
-<!-- Supabase -->
+<!-- LIBRARIES -->
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="/js/config.js"></script>
+<script src="/js/auth.js"></script>
+
 <script>
-  const supabaseClient = supabase.createClient(
-    'https://wbdlvxisyktesdylhlsg.supabase.co',
-    'sb_publishable_siYPKtcJxDZRE-vRJ79gxA_e9vrmfUP'
-  );
-
-  let mode = 'login';
-
-  function toggleMode() {
-    document.getElementById('message').innerText = '';
-
-    if (mode === 'login') {
-      mode = 'register';
-      loginForm.classList.add('hidden');
-      registerForm.classList.remove('hidden');
-      title.innerText = 'Create account';
-      toggleText.innerText = 'Already have an account? Sign in';
-    } else {
-      mode = 'login';
-      registerForm.classList.add('hidden');
-      loginForm.classList.remove('hidden');
-      title.innerText = 'Sign in';
-      toggleText.innerText = 'Create account';
+  document.addEventListener('DOMContentLoaded', async () => {
+    // Si ya está logueado, no debería ver login
+    const user = await getCurrentUser();
+    if (user) {
+      window.location.href = '/index.html';
     }
-  }
+  });
 
   async function signIn() {
-    const email = loginEmail.value;
-    const password = loginPassword.value;
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
     const msg = document.getElementById('message');
+    const btn = document.getElementById('loginBtn');
+
     msg.innerText = '';
+    msg.className = 'message';
+
+    if (!email || !password) {
+      msg.className = 'message error';
+      msg.innerText = 'Please enter email and password';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerText = 'Signing in…';
 
     const { error } = await supabaseClient.auth.signInWithPassword({
       email,
@@ -77,59 +144,40 @@
     });
 
     if (error) {
+      msg.className = 'message error';
       msg.innerText = error.message;
-    } else {
-      window.location.href = 'index.html';
-    }
-  }
-
-  async function createAccount() {
-    const email = regEmail.value;
-    const password = regPassword.value;
-    const name = regName.value;
-    const phone = regPhone.value;
-    const msg = document.getElementById('message');
-    msg.innerText = '';
-
-    if (!email || !password || !name) {
-      msg.innerText = 'Please fill all required fields';
+      btn.disabled = false;
+      btn.innerText = 'Sign in';
       return;
     }
 
-    const { data, error } = await supabaseClient.auth.signUp({
-      email,
-      password
-    });
-
-    if (error) {
-      msg.innerText = error.message;
-      return;
-    }
-
-    await supabaseClient.from('profiles').insert({
-      id: data.user.id,
-      name,
-      phone
-    });
-
-    window.location.href = 'index.html';
+    window.location.href = '/index.html';
   }
 
-  async function forgotPassword() {
-    const email = loginEmail.value;
+  async function resetPassword() {
+    const email = document.getElementById('email').value.trim();
     const msg = document.getElementById('message');
+
     msg.innerText = '';
+    msg.className = 'message';
 
     if (!email) {
+      msg.className = 'message error';
       msg.innerText = 'Enter your email first';
       return;
     }
 
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset.html`
+    });
 
-    msg.innerText = error
-      ? error.message
-      : 'Password reset email sent';
+    if (error) {
+      msg.className = 'message error';
+      msg.innerText = error.message;
+    } else {
+      msg.className = 'message success';
+      msg.innerText = 'Password reset email sent. Check your inbox.';
+    }
   }
 </script>
 

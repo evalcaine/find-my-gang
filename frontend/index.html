@@ -1,21 +1,171 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Find My Gang</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="css/ios.css">
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+
+    /* NAVBAR */
+    .navbar {
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .nav-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      font-weight: 600;
+      font-size: 18px;
+      color: #4f46e5;
+    }
+
+    .links a,
+    .links button {
+      margin-left: 15px;
+      text-decoration: none;
+      color: #374151;
+      font-weight: 500;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .links a:hover,
+    .links button:hover {
+      color: #4f46e5;
+    }
+
+    /* HEADER */
+    header {
+      background: linear-gradient(135deg, #4f46e5, #6366f1);
+      color: white;
+      padding: 40px 20px;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0;
+    }
+
+    header p {
+      margin-top: 8px;
+      opacity: 0.9;
+    }
+
+    /* CONTENT */
+    .container {
+      max-width: 900px;
+      margin: 50px auto;
+      padding: 0 20px;
+    }
+
+    .search-box {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 10px;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+    }
+
+    .search-box input,
+    .search-box button {
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      font-size: 14px;
+    }
+
+    .search-box button {
+      background: #4f46e5;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    .search-box button.today {
+      background: #10b981;
+    }
+
+    .results {
+      margin-top: 30px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+    }
+
+    .city {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .date {
+      font-size: 14px;
+      color: #6b7280;
+      margin-bottom: 10px;
+    }
+
+    .person {
+      background: #eef2ff;
+      color: #3730a3;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      display: inline-block;
+      margin: 4px 4px 0 0;
+    }
+
+    .empty {
+      text-align: center;
+      color: #6b7280;
+      margin-top: 40px;
+      font-size: 15px;
+    }
+
+    .loading {
+      text-align: center;
+      margin-top: 30px;
+      font-size: 14px;
+      color: #6b7280;
+    }
+  </style>
 </head>
 
 <body>
 
-<!-- NAVBAR -->
+<!-- NAV -->
 <nav class="navbar">
   <div class="nav-container">
-    <div class="logo">Find My Gang</div>
-    <div class="nav-links">
-      <a href="index.html">Who's around?</a>
-      <a href="register.html">My tours</a>
+    <span class="logo">Find My Gang</span>
+    <div class="links">
+      <a href="/register.html">Add tour</a>
       <button onclick="logout()">Logout</button>
     </div>
   </div>
@@ -23,208 +173,98 @@
 
 <header>
   <h1>Find My Gang</h1>
-  <p>We're in it together</p>
+  <p>See who’s around on your tour</p>
 </header>
 
 <div class="container">
+
   <div class="search-box">
     <input type="date" id="date" />
     <button onclick="loadMatches()">Search</button>
-    <button onclick="setToday()" class="today-btn">TODAY</button>
+    <button class="today" onclick="setToday()">Today</button>
   </div>
 
-  <div class="results" id="results"></div>
-  <div class="empty" id="empty"></div>
+  <div id="loading" class="loading"></div>
+  <div id="results" class="results"></div>
+  <div id="empty" class="empty"></div>
+
 </div>
 
-<!-- PROFILE MODAL -->
-<div id="profileOverlay" class="overlay hidden" onclick="closeProfile(event)">
-  <div class="modal">
-    <button class="close-btn" onclick="closeProfile()">✕</button>
-    <h2 id="profileName"></h2>
-    <p id="profilePhone" class="phone"></p>
-    <p class="note">You matched on this date and city 🎉</p>
-  </div>
-</div>
-
-<!-- SUPABASE -->
+<!-- LIBRARIES -->
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="/js/config.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
 
 <script>
-/* ===============================
-   CONFIG
-================================ */
+  let currentUser = null;
 
-const supabaseClient = supabase.createClient(
-  'https://wbdlvxisyktesdylhlsg.supabase.co',
-  'sb_publishable_siYPKtcJxDZRE-vRJ79gxA_e9vrmfUP'
-);
+  document.addEventListener('DOMContentLoaded', async () => {
+    currentUser = await requireAuth();
+    if (!currentUser) return;
 
-let currentUserEmail = null;
-
-/* ===============================
-   HELPERS
-================================ */
-
-function formatDate(dateString) {
-  const [y, m, d] = dateString.split('-');
-  return `${d}/${m}/${y}`;
-}
-
-function setToday() {
-  const t = new Date();
-  const yyyy = t.getFullYear();
-  const mm = String(t.getMonth() + 1).padStart(2, '0');
-  const dd = String(t.getDate()).padStart(2, '0');
-  document.getElementById('date').value = `${yyyy}-${mm}-${dd}`;
-  loadMatches();
-}
-
-/* ===============================
-   LOAD MATCHES
-================================ */
-
-async function loadMatches() {
-
-  const dateInput = document.getElementById('date');
-  const results = document.getElementById('results');
-  const empty = document.getElementById('empty');
-
-  results.innerHTML = '';
-  empty.innerHTML = '';
-
-  if (!currentUserEmail) {
-    empty.innerText = 'User not loaded';
-    return;
-  }
-
-  if (!dateInput.value) {
-    empty.innerText = 'Please select a date';
-    return;
-  }
-
-  const date = dateInput.value.split('T')[0];
-
-  const url =
-    `/matches/grouped` +
-    `?email=${encodeURIComponent(currentUserEmail)}` +
-    `&date=${encodeURIComponent(date)}`;
-
-  let response;
-  try {
-    response = await fetch(url);
-  } catch (err) {
-    console.error('Network error:', err);
-    empty.innerText = 'Cannot reach server';
-    return;
-  }
-
-  if (!response.ok) {
-    empty.innerText = 'Error loading matches';
-    return;
-  }
-
-  const data = await response.json();
-
-  if (!Array.isArray(data) || data.length === 0) {
-    empty.innerText = 'No matches found';
-    return;
-  }
-
-  data.forEach(item => {
-
-    if (!item.people || item.people.length === 0) return;
-
-    const card = document.createElement('div');
-    card.className = 'card';
-
-    card.innerHTML = `
-      <div class="city">${item.city}</div>
-      <div class="date">${formatDate(item.date)}</div>
-      <div class="people">
-        ${item.people.map(p => `
-          <span class="person"
-            onclick="openProfile(
-              '${item.city}',
-              '${item.date}',
-              '${p.name.replace(/'/g, "\\'")}'
-            )">
-            ${p.name}
-          </span>
-        `).join('')}
-      </div>
-    `;
-
-    results.appendChild(card);
+    setToday();
   });
-}
 
-/* ===============================
-   OPEN PROFILE
-================================ */
-
-async function openProfile(city, date, name) {
-
-  const url =
-    `/profile` +
-    `?email=${encodeURIComponent(currentUserEmail)}` +
-    `&name=${encodeURIComponent(name)}` +
-    `&date=${date}` +
-    `&city=${encodeURIComponent(city)}`;
-
-  let response;
-  try {
-    response = await fetch(url);
-  } catch (err) {
-    alert('Network error');
-    return;
+  function formatDate(dateString) {
+    const [y, m, d] = dateString.split('T')[0].split('-');
+    return `${d}/${m}/${y}`;
   }
 
-  if (!response.ok) {
-    alert('You can only view profiles if there is a real match');
-    return;
+  function setToday() {
+    const t = new Date();
+    const yyyy = t.getFullYear();
+    const mm = String(t.getMonth() + 1).padStart(2, '0');
+    const dd = String(t.getDate()).padStart(2, '0');
+    document.getElementById('date').value = `${yyyy}-${mm}-${dd}`;
+    loadMatches();
   }
 
-  const profile = await response.json();
+  async function loadMatches() {
+    const date = document.getElementById('date').value;
+    const results = document.getElementById('results');
+    const empty = document.getElementById('empty');
+    const loading = document.getElementById('loading');
 
-  document.getElementById('profileName').innerText = profile.name || '';
-  document.getElementById('profilePhone').innerText =
-    profile.phone ? `📞 ${profile.phone}` : '📞 Phone not shared';
+    results.innerHTML = '';
+    empty.innerText = '';
+    loading.innerText = '';
 
-  document.getElementById('profileOverlay').classList.remove('hidden');
-}
+    if (!date) {
+      empty.innerText = 'Please select a date';
+      return;
+    }
 
-function closeProfile(event) {
-  if (!event || event.target.id === 'profileOverlay') {
-    document.getElementById('profileOverlay').classList.add('hidden');
+    loading.innerText = 'Searching...';
+
+    try {
+      const data = await getMatches(currentUser.email, date);
+
+      loading.innerText = '';
+
+      if (!data.length) {
+        empty.innerText = 'You have no matches that day';
+        return;
+      }
+
+      data.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        card.innerHTML = `
+          <div class="city">${item.city}</div>
+          <div class="date">${formatDate(item.date)}</div>
+          ${item.people.map(p => `<span class="person">${p}</span>`).join('')}
+        `;
+
+        results.appendChild(card);
+      });
+
+    } catch (err) {
+      loading.innerText = '';
+      empty.innerText = 'Error loading matches';
+    }
   }
-}
-
-/* ===============================
-   LOGOUT
-================================ */
-
-async function logout() {
-  await supabaseClient.auth.signOut();
-  window.location.href = 'login.html';
-}
-
-/* ===============================
-   INIT
-================================ */
-
-window.addEventListener('DOMContentLoaded', async () => {
-
-  const { data: { session } } = await supabaseClient.auth.getSession();
-
-  if (!session) {
-    window.location.href = 'login.html';
-    return;
-  }
-
-  currentUserEmail = session.user.email;
-  setToday();
-});
 </script>
 
 </body>

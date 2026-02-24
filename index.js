@@ -1,145 +1,187 @@
+// index.js
 require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const { Pool } = require('pg');
 const path = require('path');
+const { Pool } = require('pg');
 
 const app = express();
 
+/* ------------------ MIDDLEWARE ------------------ */
 app.use(cors());
 app.use(express.json());
 
-// 🔥 FRONTEND ESTÁTICO
-app.use(express.static(path.join(__dirname, 'frontend')));
-
-/* ===============================
-   DATABASE
-================================ */
+/* ------------------ DATABASE ------------------ */
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: process.env.NODE_ENV === 'production'
+    ? { rejectUnauthorized: false }
+    : false
 });
 
-/* ===============================
-   ROOT → FRONTEND
-================================ */
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'frontend', 'index.html'));
-});
+// Test de conexión
+(async () => {
+  try {
+    const res = await pool.query('SELECT NOW()');
+    console.log('✅ Database connected:', res.rows[0].now);
+  } catch (err) {
+    console.error('❌ Database connection error:', err);
+  }
+})();
 
-/* ===============================
-   ROUTES
-================================ */
-app.get('/routes', async (_, res) => {
-  const r = await pool.query(
-    `SELECT DISTINCT code FROM routes ORDER BY code`
-  );
-  res.json(r.rows);
-});
+/* ------------------ STATIC FRONTEND ------------------ */
+app.use(express.static(path.join(__dirname, 'frontend')));
 
-/* ===============================
-   CREATE TOUR
-================================ */
-app.post('/trips', async (req, res) => {
+/* ------------------ API ROUTER ------------------ */
+const api = express.Router();
+
+/* =====================================================
+   POST /api/trips
+   - Evita solapamiento de tours
+   - Permite último día = primer día siguiente
+===================================================== */
+api.post('/trips', async (req, res) => {
   const { email, name, routeCode, startDate } = req.body;
+
   if (!email || !name || !routeCode || !startDate) {
     return res.status(400).json({ error: 'Missing fields' });
   }
 
-  const duration = await pool.query(
-    `SELECT MAX(day_offset) max_day FROM routes WHERE UPPER(code)=UPPER($1)`,
-    [routeCode]
-  );
+  // Normalizar email
+  const normalizedEmail = email.trim().toLowerCase();
 
-  if (!duration.rows[0].max_day) {
-    return res.status(400).json({ error: 'Invalid route' });
+  try {
+    /* 1️⃣ Obtener duración del tour */
+    const routeResult = await pool.query(
+      `
+      SELECT MAX(day_offset) AS max_offset
+      FROM routes
+      WHERE UPPER(TRIM(code)) = UPPER(TRIM($1))
+      `,
+      [routeCode]
+    );
+
+    const maxOffset = routeResult.rows[0]?.max_offset;
+
+    if (maxOffset === null || maxOffset === undefined) {
+      return res.status(404).json({ error: 'Route not found' });
+    }
+
+    /* 2️⃣ Calcular rango [start_date, end_date) */
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setDate(start.getDate() + maxOffset + 1); // rango semi-abierto
+
+    const newStart = startDate;
+    const newEnd = end.toISOString().split('T')[0];
+
+    /* 3️⃣ Verificar solapamiento */
+    const overlapCheck = await pool.query(
+      `
+      SELECT 1
+      FROM user_trips
+      WHERE LOWER(TRIM(email)) = $1
+        AND start_date < $3
+        AND $2 < end_date
+      LIMIT 1
+      `,
+      [normalizedEmail, newStart, newEnd]
+    );
+
+    if (overlapCheck.rows.length > 0) {
+      return res.status(409).json({
+        error: 'This tour overlaps with another existing tour'
+      });
+    }
+
+    /* 4️⃣ Insertar tour */
+    await pool.query(
+      `
+      INSERT INTO user_trips
+        (email, name, route_code, start_date, end_date)
+      VALUES
+        ($1, $2, UPPER(TRIM($3)), $4, $5)
+      `,
+      [normalizedEmail, name, routeCode, newStart, newEnd]
+    );
+
+    res.json({ ok: true });
+
+  } catch (err) {
+    console.error('DB error:', err);
+    res.status(500).json({ error: 'Database error' });
   }
-
-  await pool.query(
-    `INSERT INTO user_trips (email,name,route_code,start_date)
-     VALUES ($1,$2,UPPER($3),$4)`,
-    [email, name, routeCode, startDate]
-  );
-
-  res.json({ ok: true });
 });
 
-/* ===============================
-   USER TOURS
-================================ */
-app.get('/user-tours', async (req, res) => {
-  const { email } = req.query;
-
-  const r = await pool.query(
-    `
-    SELECT ut.id, ut.route_code, ut.start_date,
-           MAX(ut.start_date + r.day_offset) end_date
-    FROM user_trips ut
-    JOIN routes r ON UPPER(r.code)=UPPER(ut.route_code)
-    WHERE ut.email=$1
-    GROUP BY ut.id
-    ORDER BY ut.start_date
-    `,
-    [email]
-  );
-
-  res.json(r.rows);
+/* =====================================================
+   GET /api/routes
+===================================================== */
+api.get('/routes', async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT DISTINCT code
+      FROM routes
+      ORDER BY code
+      `
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('DB error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-/* ===============================
-   MATCHES (REAL)
-================================ */
-app.get('/matches/grouped', async (req, res) => {
+/* =====================================================
+   GET /api/matches/grouped
+===================================================== */
+api.get('/matches/grouped', async (req, res) => {
   const { email, date } = req.query;
+
+  if (!email || !date) {
+    return res.status(400).json({ error: 'Missing email or date' });
+  }
 
   try {
     const result = await pool.query(
       `
       SELECT
         r.city,
-        $2::date AS date,
-        json_agg(DISTINCT jsonb_build_object(
-          'name', ut.name
-        )) AS people
-      FROM user_trips ut
+        to_char(
+          (u.start_date::date + r.day_offset),
+          'YYYY-MM-DD'
+        ) AS date,
+        array_agg(u.name ORDER BY u.name) AS people
+      FROM user_trips u
       JOIN routes r
-        ON UPPER(r.code) = UPPER(ut.route_code)
-      WHERE ut.email <> $1
-        AND $2::date BETWEEN ut.start_date
-        AND ut.start_date + r.day_offset
-      GROUP BY r.city
+        ON TRIM(UPPER(r.code)) = TRIM(UPPER(u.route_code))
+      WHERE (u.start_date::date + r.day_offset) = $1::date
+        AND LOWER(TRIM(u.email)) != LOWER(TRIM($2))
+      GROUP BY r.city, date
+      ORDER BY r.city
       `,
-      [email, date]
+      [date, email]
     );
 
     res.json(result.rows);
 
   } catch (err) {
-    console.error('MATCH ERROR:', err);
-    res.status(500).json({ error: 'Match error' });
+    console.error('DB error:', err);
+    res.status(500).json({ error: 'Database error' });
   }
 });
 
-/* ===============================
-   PROFILE (NUEVO)
-================================ */
-app.get('/profile', async (req, res) => {
-  const { name } = req.query;
+/* ------------------ MOUNT API ------------------ */
+app.use('/api', api);
 
-  const r = await pool.query(
-    `SELECT name, phone FROM profiles WHERE name=$1`,
-    [name]
-  );
-
-  if (!r.rowCount) return res.sendStatus(403);
-  res.json(r.rows[0]);
+/* ------------------ FRONTEND FALLBACK ------------------ */
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend', 'login.html'));
 });
 
-/* ===============================
-   SERVER
-================================ */
+/* ------------------ SERVER ------------------ */
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () =>
-  console.log(`🚀 Server running on ${PORT}`)
-);
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
