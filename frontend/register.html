@@ -1,261 +1,344 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>Add Tour · Find My Gang</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <style>
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f5f7fb;
-      color: #1f2937;
-    }
-
-    /* NAVBAR */
-    .navbar {
-      background: white;
-      border-bottom: 1px solid #e5e7eb;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-
-    .nav-container {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 12px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .logo {
-      font-weight: 600;
-      font-size: 18px;
-      color: #4f46e5;
-    }
-
-    .links a,
-    .links button {
-      margin-left: 15px;
-      text-decoration: none;
-      color: #374151;
-      font-weight: 500;
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 14px;
-    }
-
-    .links a:hover,
-    .links button:hover {
-      color: #4f46e5;
-    }
-
-    /* CONTENT */
-    .container {
-      max-width: 420px;
-      margin: 80px auto;
-      padding: 0 20px;
-    }
-
-    .card {
-      background: white;
-      padding: 30px;
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-    }
-
-    h1 {
-      margin-top: 0;
-      text-align: center;
-    }
-
-    p.subtitle {
-      text-align: center;
-      color: #6b7280;
-      font-size: 14px;
-      margin-top: -10px;
-      margin-bottom: 20px;
-    }
-
-    input,
-    button {
-      width: 100%;
-      padding: 12px;
-      margin-top: 12px;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-      font-size: 14px;
-      box-sizing: border-box;
-    }
-
-    button {
-      background: #4f46e5;
-      color: white;
-      border: none;
-      cursor: pointer;
-      margin-top: 20px;
-    }
-
-    button:disabled {
-      background: #9ca3af;
-      cursor: not-allowed;
-    }
-
-    .message {
-      text-align: center;
-      margin-top: 15px;
-      font-size: 14px;
-    }
-
-    .message.error {
-      color: #dc2626;
-    }
-
-    .message.success {
-      color: #16a34a;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Add Tour · Find My Gang</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="css/ios.css">
 </head>
+
+
+
 
 <body>
 
-<!-- NAV -->
-<nav class="navbar">
+  <nav class="navbar">
   <div class="nav-container">
-    <span class="logo">Find My Gang</span>
-    <div class="links">
-      <a href="/index.html">Who's around?</a>
+    <div class="logo">Find My Gang</div>
+    <div class="nav-links">
+      <a href="index.html">Who's around?</a>
+      <a href="register.html">My tours</a>
       <button onclick="logout()">Logout</button>
     </div>
   </div>
 </nav>
 
-<!-- CONTENT -->
 <div class="container">
-  <div class="card">
-    <h1>Add a Tour</h1>
-    <p class="subtitle">Start date = Day 1 of your tour</p>
+<div class="card">
 
-    <input
-      type="text"
-      id="name"
-      placeholder="Your name (visible to others)"
-    />
+<h2>Add a Tour</h2>
 
-    <input
-      list="routes"
-      id="routeCode"
-      placeholder="Tour code"
-      spellcheck="false"
-    />
-    <datalist id="routes"></datalist>
+<input id="name" placeholder="Your name">
+<input id="routeCode" list="routes" placeholder="Tour code">
+<datalist id="routes"></datalist>
+<input id="startDate" type="date">
+<input id="phone" placeholder="WhatsApp (optional)">
 
-    <input type="date" id="startDate" />
+<button id="submitBtn" class="primary" onclick="register()" disabled>
+Loading routes…
+</button>
 
-    <button id="submitBtn" onclick="submitTour()" disabled>
-      Loading routes…
-    </button>
+<div id="message"></div>
 
-    <div id="message" class="message"></div>
+<hr style="margin:30px 0">
+
+<h3>Your tours</h3>
+<div id="userTours"></div>
+
+</div>
+</div>
+
+<!-- EDIT MODAL -->
+<div id="editModal" class="modal">
+  <div class="modal-card">
+    <h3>Edit Tour</h3>
+
+    <input id="editRouteCode" list="routes" placeholder="Tour code">
+    <input id="editStartDate" type="date">
+
+    <button class="primary" onclick="saveEdit()">Save</button>
+    <button class="secondary" onclick="closeEdit()">Cancel</button>
+
+    <div id="editMsg"></div>
   </div>
 </div>
 
-<!-- LIBRARIES -->
+
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script src="/js/config.js"></script>
-<script src="/js/auth.js"></script>
-<script src="/js/api.js"></script>
-
 <script>
-  let currentUser = null;
-  let availableRoutes = [];
+const supabaseClient = supabase.createClient(
+  'https://wbdlvxisyktesdylhlsg.supabase.co',
+  'sb_publishable_siYPKtcJxDZRE-vRJ79gxA_e9vrmfUP'
+);
 
-  document.addEventListener('DOMContentLoaded', async () => {
-    currentUser = await requireAuth();
-    if (!currentUser) return;
+let currentUser = null;
+let availableRoutes = [];
+let editingId = null;
 
-    loadRoutes();
+const today = new Date();
+today.setHours(0,0,0,0);
+
+function formatDate(dateStr) {
+  return new Date(dateStr).toLocaleDateString();
+}
+
+/* ===============================
+   INIT
+================================ */
+window.addEventListener('DOMContentLoaded', async () => {
+
+  const { data:{ session } } = await supabaseClient.auth.getSession();
+
+  if (!session) {
+    window.location.href = 'login.html';
+    return;
+  }
+
+  currentUser = session.user;
+
+  // ✅ Cargar perfil y rellenar campos
+  const { data: profile } = await supabaseClient
+    .from('profiles')
+    .select('name, phone')
+    .eq('id', currentUser.id)
+    .single();
+
+  if (profile) {
+    if (profile.name) {
+      document.getElementById('name').value = profile.name;
+    }
+    if (profile.phone) {
+      document.getElementById('phone').value = profile.phone;
+    }
+  }
+
+  await loadRoutes();
+  await loadUserTours();
+});
+
+
+/* ===============================
+   LOAD ROUTES (FIXED)
+================================ */
+async function loadRoutes() {
+
+  const btn = document.getElementById('submitBtn');
+  const datalist = document.getElementById('routes');
+
+  try {
+    const res = await fetch('/routes');
+    const routes = await res.json();
+
+    availableRoutes = routes.map(r => r.code);
+
+    datalist.innerHTML = '';
+
+    routes.forEach(r => {
+      const option = document.createElement('option');
+      option.value = r.code;
+      datalist.appendChild(option);
+    });
+
+    btn.disabled = false;
+    btn.innerText = 'Add Tour';
+
+  } catch (err) {
+    document.getElementById('message').innerHTML =
+      '<div class="error">Failed to load routes</div>';
+  }
+}
+
+
+/* ===============================
+   LOAD USER TOURS
+================================ */
+async function loadUserTours() {
+
+  const container = document.getElementById('userTours');
+  container.innerHTML = 'Loading tours...';
+
+  try {
+    const res = await fetch(
+      `http://localhost:3000/user-tours?email=${currentUser.email}`
+    );
+
+    const tours = await res.json();
+
+    if (!tours.length) {
+      container.innerHTML = '<p>No tours yet.</p>';
+      return;
+    }
+
+    container.innerHTML = '';
+
+    tours.forEach(tour => {
+
+      const start = new Date(tour.start_date);
+      const started = start < today;
+
+      const div = document.createElement('div');
+      div.className = 'tour-item';
+
+      div.innerHTML = `
+        <strong>${tour.route_code}</strong><br>
+        ${formatDate(tour.start_date)} → ${formatDate(tour.end_date)}
+        <br>
+        <button onclick="openEdit(${tour.id}, '${tour.route_code}', '${tour.start_date}')" 
+          ${started ? 'disabled' : ''}>Edit</button>
+        <button onclick="deleteTour(${tour.id})" 
+          ${started ? 'disabled' : ''}>Delete</button>
+      `;
+
+      container.appendChild(div);
+    });
+
+  } catch (err) {
+    container.innerHTML = '<p>Error loading tours</p>';
+  }
+}
+
+
+/* ===============================
+   REGISTER TOUR
+================================ */
+async function register() {
+
+  const msg = document.getElementById('message');
+  const btn = document.getElementById('submitBtn');
+  msg.innerHTML = '';
+
+  const name = document.getElementById('name').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  const routeCode = document.getElementById('routeCode').value.trim().toUpperCase();
+  const startDate = document.getElementById('startDate').value;
+
+  if (!name || !routeCode || !startDate) {
+    msg.innerHTML = '<div class="error">All required fields must be filled</div>';
+    return;
+  }
+
+  if (!availableRoutes.includes(routeCode)) {
+    msg.innerHTML =
+      `<div class="error">Tour code <strong>${routeCode}</strong> does not exist</div>`;
+    return;
+  }
+
+  btn.disabled = true;
+
+  await supabaseClient.from('profiles').upsert({
+    id: currentUser.id,
+    name,
+    phone
   });
 
-  async function loadRoutes() {
-    const btn = document.getElementById('submitBtn');
-    const message = document.getElementById('message');
+  const res = await fetch('http://localhost:3000/trips', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: currentUser.email,
+      name,
+      routeCode,
+      startDate
+    })
+  });
 
-    try {
-      const routes = await getRoutes();
-      availableRoutes = routes.map(r => r.code);
+  btn.disabled = false;
 
-      const datalist = document.getElementById('routes');
-      datalist.innerHTML = '';
-
-      routes.forEach(r => {
-        const option = document.createElement('option');
-        option.value = r.code;
-        datalist.appendChild(option);
-      });
-
-      btn.disabled = false;
-      btn.innerText = 'Add Tour';
-    } catch (err) {
-      message.className = 'message error';
-      message.innerText = 'Failed to load tour codes';
-    }
+  if (res.ok) {
+    msg.innerHTML = '<div class="success">Tour added successfully!</div>';
+    document.getElementById('routeCode').value = '';
+    document.getElementById('startDate').value = '';
+    await loadUserTours();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    msg.innerHTML =
+      `<div class="error">${data.error || 'Error adding tour'}</div>`;
   }
+}
 
-  async function submitTour() {
-    const message = document.getElementById('message');
-    const btn = document.getElementById('submitBtn');
 
-    message.innerText = '';
-    message.className = 'message';
+/* ===============================
+   DELETE
+================================ */
+async function deleteTour(id) {
 
-    const name = document.getElementById('name').value.trim();
-    const routeCode = document
-      .getElementById('routeCode')
-      .value.trim()
-      .toUpperCase();
-    const startDate = document.getElementById('startDate').value;
+  if (!confirm('Delete this tour?')) return;
 
-    if (!name || !routeCode || !startDate) {
-      message.className = 'message error';
-      message.innerText = 'All fields are required';
-      return;
-    }
+  const res = await fetch(
+    `http://localhost:3000/user-tours/${id}?email=${currentUser.email}`,
+    { method: 'DELETE' }
+  );
 
-    if (!availableRoutes.includes(routeCode)) {
-      message.className = 'message error';
-      message.innerText = `Tour code "${routeCode}" does not exist`;
-      return;
-    }
+  if (res.ok) {
+    await loadUserTours();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    document.getElementById('message').innerHTML =
+      `<div class="error">${data.error || 'Delete not allowed'}</div>`;
+  }
+}
 
-    btn.disabled = true;
-    btn.innerText = 'Saving…';
 
-    try {
-      await createTrip({
+/* ===============================
+   EDIT (MODAL)
+================================ */
+function openEdit(id, routeCode, startDate) {
+
+  editingId = id;
+
+  document.getElementById('editRouteCode').value = routeCode;
+  document.getElementById('editStartDate').value =
+    startDate.split('T')[0];
+
+  document.getElementById('editModal').style.display = 'flex';
+}
+
+function closeEdit() {
+  document.getElementById('editModal').style.display = 'none';
+  document.getElementById('editMsg').innerHTML = '';
+}
+
+async function saveEdit() {
+
+  const routeCode = document
+    .getElementById('editRouteCode')
+    .value.trim()
+    .toUpperCase();
+
+  const startDate = document.getElementById('editStartDate').value;
+
+  const res = await fetch(
+    `http://localhost:3000/user-tours/${editingId}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         email: currentUser.email,
-        name,
         routeCode,
         startDate
-      });
-
-      message.className = 'message success';
-      message.innerText = 'Tour added successfully 🎉';
-
-      setTimeout(() => {
-        window.location.href = '/index.html';
-      }, 1200);
-    } catch (err) {
-      message.className = 'message error';
-      message.innerText = 'Error adding tour';
-      btn.disabled = false;
-      btn.innerText = 'Add Tour';
+      })
     }
+  );
+
+  if (res.ok) {
+    closeEdit();
+    await loadUserTours();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    document.getElementById('editMsg').innerHTML =
+      `<div class="error">${data.error || 'Edit failed'}</div>`;
   }
+}
+
+
+/* ===============================
+   LOGOUT
+================================ */
+async function logout() {
+  await supabaseClient.auth.signOut();
+  window.location.href = 'login.html';
+}
+
 </script>
 
 </body>
