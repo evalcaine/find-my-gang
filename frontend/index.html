@@ -106,7 +106,7 @@ async function loadMatches() {
   const date = dateInput.value.split('T')[0];
 
   const url =
-    `/matches/grouped` +
+    `/api/matches/grouped` +
     `?email=${encodeURIComponent(currentUserEmail)}` +
     `&date=${encodeURIComponent(date)}`;
 
@@ -142,14 +142,14 @@ async function loadMatches() {
       <div class="city">${item.city}</div>
       <div class="date">${formatDate(item.date)}</div>
       <div class="people">
-        ${item.people.map(p => `
+        ${item.people.map(name => `
           <span class="person"
             onclick="openProfile(
               '${item.city}',
               '${item.date}',
-              '${p.name.replace(/'/g, "\\'")}'
+              '${name.replace(/'/g, "\\'")}'
             )">
-            ${p.name}
+            ${name}
           </span>
         `).join('')}
       </div>
@@ -166,7 +166,7 @@ async function loadMatches() {
 async function openProfile(city, date, name) {
 
   const url =
-    `/profile` +
+    `/api/profile` +
     `?email=${encodeURIComponent(currentUserEmail)}` +
     `&name=${encodeURIComponent(name)}` +
     `&date=${date}` +
