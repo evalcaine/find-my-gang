@@ -126,7 +126,7 @@ async function loadRoutes() {
   const datalist = document.getElementById('routes');
 
   try {
-    const res = await fetch('/routes');
+    const res = await fetch('/api/routes');
     const routes = await res.json();
 
     availableRoutes = routes.map(r => r.code);
@@ -159,7 +159,7 @@ async function loadUserTours() {
 
   try {
     const res = await fetch(
-      `http://localhost:3000/user-tours?email=${currentUser.email}`
+      `api/user-tours?email=${currentUser.email}`
     );
 
     const tours = await res.json();
@@ -231,7 +231,7 @@ async function register() {
     phone
   });
 
-  const res = await fetch('http://localhost:3000/trips', {
+  const res = await fetch('/api/trips', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -265,7 +265,7 @@ async function deleteTour(id) {
   if (!confirm('Delete this tour?')) return;
 
   const res = await fetch(
-    `http://localhost:3000/user-tours/${id}?email=${currentUser.email}`,
+    `/api/user-tours/${id}?email=${currentUser.email}`,
     { method: 'DELETE' }
   );
 
@@ -308,7 +308,7 @@ async function saveEdit() {
   const startDate = document.getElementById('editStartDate').value;
 
   const res = await fetch(
-    `http://localhost:3000/user-tours/${editingId}`,
+    `/api/user-tours/${editingId}`,
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
