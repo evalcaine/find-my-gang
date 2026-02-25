@@ -172,6 +172,201 @@ api.get('/matches/grouped', async (req, res) => {
   }
 });
 
+/* =====================================================
+   GET /api/profile
+===================================================== */
+api.get('/profile', async (req, res) => {
+  const { email, name, date, city } = req.query;
+
+  if (!email || !name || !date || !city) {
+    return res.status(400).json({ error: 'Missing params' });
+  }
+
+  try {
+    const matchResult = await pool.query(
+      `
+      SELECT 1
+      FROM user_trips u1
+      JOIN routes r1
+        ON TRIM(UPPER(r1.code)) = TRIM(UPPER(u1.route_code))
+      JOIN user_trips u2
+        ON LOWER(TRIM(u2.email)) = LOWER(TRIM($1))
+      JOIN routes r2
+        ON TRIM(UPPER(r2.code)) = TRIM(UPPER(u2.route_code))
+      WHERE LOWER(TRIM(u1.email)) != LOWER(TRIM($1))
+        AND LOWER(TRIM(u1.name)) = LOWER(TRIM($2))
+        AND (u1.start_date::date + r1.day_offset) = $3::date
+        AND LOWER(TRIM(r1.city)) = LOWER(TRIM($4))
+        AND (u2.start_date::date + r2.day_offset) = $3::date
+        AND LOWER(TRIM(r2.city)) = LOWER(TRIM($4))
+      LIMIT 1
+      `,
+      [email, name, date, city]
+    );
+
+    if (!matchResult.rows.length) {
+      return res.status(403).json({ error: 'No valid match for this profile' });
+    }
+
+    const profileResult = await pool.query(
+      `
+      SELECT name, phone
+      FROM profiles
+      WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))
+      ORDER BY updated_at DESC NULLS LAST
+      LIMIT 1
+      `,
+      [name]
+    );
+
+    if (!profileResult.rows.length) {
+      return res.json({ name, phone: null });
+    }
+
+    return res.json(profileResult.rows[0]);
+  } catch (err) {
+    console.error('DB error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+});
+
+/* =====================================================
+   GET /api/user-tours
+===================================================== */
+api.get('/user-tours', async (req, res) => {
+  const { email } = req.query;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Missing email' });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT id, route_code, start_date, end_date
+      FROM user_trips
+      WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))
+      ORDER BY start_date, id
+      `,
+      [email]
+    );
+
+    return res.json(result.rows);
+  } catch (err) {
+    console.error('DB error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+});
+
+/* =====================================================
+   DELETE /api/user-tours/:id
+===================================================== */
+api.delete('/user-tours/:id', async (req, res) => {
+  const { id } = req.params;
+  const { email } = req.query;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Missing email' });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      DELETE FROM user_trips
+      WHERE id = $1
+        AND LOWER(TRIM(email)) = LOWER(TRIM($2))
+      RETURNING id
+      `,
+      [id, email]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Tour not found' });
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('DB error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+});
+
+/* =====================================================
+   PUT /api/user-tours/:id
+===================================================== */
+api.put('/user-tours/:id', async (req, res) => {
+  const { id } = req.params;
+  const { email, routeCode, startDate } = req.body;
+
+  if (!email || !routeCode || !startDate) {
+    return res.status(400).json({ error: 'Missing fields' });
+  }
+
+  try {
+    const routeResult = await pool.query(
+      `
+      SELECT MAX(day_offset) AS max_offset
+      FROM routes
+      WHERE UPPER(TRIM(code)) = UPPER(TRIM($1))
+      `,
+      [routeCode]
+    );
+
+    const maxOffset = routeResult.rows[0]?.max_offset;
+    if (maxOffset === null || maxOffset === undefined) {
+      return res.status(404).json({ error: 'Route not found' });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setDate(start.getDate() + maxOffset + 1);
+
+    const newEnd = end.toISOString().split('T')[0];
+
+    const overlapCheck = await pool.query(
+      `
+      SELECT 1
+      FROM user_trips
+      WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))
+        AND id <> $2
+        AND start_date < $4
+        AND $3 < end_date
+      LIMIT 1
+      `,
+      [email, id, startDate, newEnd]
+    );
+
+    if (overlapCheck.rows.length > 0) {
+      return res.status(409).json({
+        error: 'This tour overlaps with another existing tour'
+      });
+    }
+
+    const updateResult = await pool.query(
+      `
+      UPDATE user_trips
+      SET route_code = UPPER(TRIM($1)),
+          start_date = $2,
+          end_date = $3
+      WHERE id = $4
+        AND LOWER(TRIM(email)) = LOWER(TRIM($5))
+      RETURNING id
+      `,
+      [routeCode, startDate, newEnd, id, email]
+    );
+
+    if (!updateResult.rows.length) {
+      return res.status(404).json({ error: 'Tour not found' });
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('DB error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+});
+
+
 /* ------------------ MOUNT API ------------------ */
 app.use('/api', api);
 
